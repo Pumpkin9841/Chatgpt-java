@@ -3,33 +3,38 @@ package org.pumpkin.entity;
 
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.Header;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import cn.hutool.log.Log;
 import cn.hutool.log.LogFactory;
-import com.alibaba.fastjson2.JSONObject;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.pumpkin.config.EnvironmentConstant;
+import org.pumpkin.utils.ConfigureUtil;
 
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 @Data
 @AllArgsConstructor
-@NoArgsConstructor
 @Builder(toBuilder = true)
 public class ChatBot {
     /**
      * 配置文件(包括 access_token)
+     *   {
+     *     "email": "OpenAI account email",
+     *     "password": "OpenAI account password",
+     *     "session_token": "<session_token>"
+     *     "access_token": "<access_token>"
+     *     "proxy": "<proxy_url_string>",
+     *     "paid": True/False, # whether this is a plus account
+     *  }
      */
     private String config;
 
@@ -43,7 +48,43 @@ public class ChatBot {
      */
     private String parentId;
 
+    private HashMap<String, Object> conversationMapping;
+
+    private Queue<String> conversationIdPrevQueue;
+
+    private Queue<String> parentIdPrevQueue;
+
+    private Boolean lazyLoading = true;
+
+    private HttpRequest request;
+
     Log log = LogFactory.get();
+
+    public ChatBot() {
+        this.config = ConfigureUtil.getConfigure();
+        if(!StrUtil.isBlank(config)) {
+            JSONObject jsonConfig = JSONUtil.parseObj(config);
+            //TODO 邮箱登陆，目前只支持access_token
+            String accessToken = jsonConfig.getStr("access_token");
+            if(StrUtil.isBlank(accessToken)) {
+                throw new RuntimeException("No access_token found.");
+            }
+            this.conversationId = jsonConfig.getStr("conversationId");
+            this.parentId = jsonConfig.getStr("parentId");
+            this.request = checkCredentials(accessToken);
+        }
+    }
+
+    private HttpRequest checkCredentials(String accessToken) {
+        return request = HttpRequest.newBuilder()
+                .header(Header.ACCEPT.getValue(), "text/event-stream")
+                .header(Header.AUTHORIZATION.getValue(), "Bearer " + accessToken)
+                .header(Header.CONTENT_TYPE.getValue(), "application/json")
+                .header("X-Openai-Assistant-App-Id", "")
+                .header(Header.ACCEPT_LANGUAGE.getValue(), "en-US,en;q=0.9")
+                .header(Header.REFERER.getValue(), "https://chat.openai.com/chat")
+                .build();
+    }
 
     /**
      * 向gpt提问
@@ -114,9 +155,9 @@ public class ChatBot {
     }
 
     private String getModel(String model) {
-        JSONObject jsonConfig = JSONObject.parseObject(config);
+        JSONObject jsonConfig = JSONUtil.parseObj(config);
         return model = model != null ? model
-                : jsonConfig.get("model") != null ? jsonConfig.getString("model").toString()
+                : jsonConfig.getStr("model") != null ? jsonConfig.getStr("model")
                 : Boolean.TRUE.equals(jsonConfig.get("paid")) ? "text-davinci-002-render-paid"
                 : "text-davinci-002-render-sha";
     }
