@@ -20,7 +20,7 @@ public class ConfigureUtil {
         try {
             content = Files.readString(filePath);
         } catch (IOException e) {
-            System.err.println("Error reading the config file: " + e.getMessage());
+            System.err.println("No config file found.");
         }
         return content;
     }
