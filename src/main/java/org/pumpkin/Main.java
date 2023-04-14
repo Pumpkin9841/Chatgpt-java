@@ -13,10 +13,10 @@ import java.nio.file.Paths;
 public class Main {
     public static void main(String[] args) {
         String config = ConfigureUtil.getConfigure();
-        System.out.println(JSONObject.parseObject(config));
+        reverseChatGpt(config, null, null);
     }
 
-    private void reverseChatGpt(String config, String conversationId, String parentId) {
+    private static void reverseChatGpt(String config, String conversationId, String parentId) {
         ChatBot bot = new ChatBot()
                 .toBuilder()
                 .config(config)
@@ -24,6 +24,8 @@ public class Main {
                 .parentId(parentId)
                 .build();
         System.out.println("You:");
+        String hello = bot.ask("hello", conversationId, parentId, null, 360);
+        System.out.println(hello);
 
     }
 }
