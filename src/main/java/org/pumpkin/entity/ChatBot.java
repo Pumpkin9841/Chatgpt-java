@@ -1,12 +1,8 @@
 package org.pumpkin.entity;
 
 
-import cn.hutool.core.net.url.UrlBuilder;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.Header;
-import cn.hutool.http.HttpRequest;
-import cn.hutool.http.HttpResponse;
-import cn.hutool.http.HttpUtil;
 import cn.hutool.json.JSONUtil;
 import cn.hutool.log.Log;
 import cn.hutool.log.LogFactory;
@@ -15,15 +11,12 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.pumpkin.config.EnvironmentConstant;
 
 import java.io.IOException;
-import java.net.HttpURLConnection;
 import java.net.URI;
-import java.net.URL;
-import java.net.URLConnection;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -96,7 +89,9 @@ public class ChatBot {
 
         String accessToken = JSONUtil.parseObj(config).get("access_token").toString();
 
-        java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder().uri(URI.create(EnvironmentConstant.BASE_URL)).header(Header.ACCEPT.getValue(), "text/event-stream")
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(EnvironmentConstant.BASE_URL))
+                .header(Header.ACCEPT.getValue(), "text/event-stream")
                 .header(Header.AUTHORIZATION.getValue(), "Bearer " + accessToken)
                 .header(Header.CONTENT_TYPE.getValue(), "application/json")
                 .header("X-Openai-Assistant-App-Id", "")
