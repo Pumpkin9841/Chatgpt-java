@@ -1,6 +1,8 @@
 package org.pumpkin;
 
 import com.alibaba.fastjson2.JSONObject;
+import org.pumpkin.entity.ChatBot;
+import org.pumpkin.utils.ConfigureUtil;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -10,16 +12,20 @@ import java.nio.file.Paths;
 
 public class Main {
     public static void main(String[] args) {
-        String home = System.getProperty("user.home");
-        String configPath = home + "/.config/revChatGPT/config.json";
-        Path filePath = Paths.get(configPath);
+        String config = ConfigureUtil.getConfigure();
+        reverseChatGpt(config, null, null);
+    }
 
-        try {
-            String content = Files.readString(filePath);
-            JSONObject config = JSONObject.parseObject(content);
-            System.out.println(config); // 输出 JSON 格式化后的内容
-        } catch (IOException e) {
-            System.err.println("Error reading the config file: " + e.getMessage());
-        }
+    private static void reverseChatGpt(String config, String conversationId, String parentId) {
+        ChatBot bot = new ChatBot()
+                .toBuilder()
+                .config(config)
+                .conversationId(conversationId)
+                .parentId(parentId)
+                .build();
+        System.out.println("You:");
+        String hello = bot.ask("hello", conversationId, parentId, null, 360);
+        System.out.println(hello);
+
     }
 }

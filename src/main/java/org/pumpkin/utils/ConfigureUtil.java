@@ -1,6 +1,7 @@
 package org.pumpkin.utils;
 
 import com.alibaba.fastjson2.JSONObject;
+import org.pumpkin.config.EnvironmentConstant;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -9,18 +10,18 @@ import java.nio.file.Paths;
 
 
 public class ConfigureUtil {
-    public String getConfigure() {
-        String home = System.getProperty("user.home");
-        String configPath = home + "/.config/revChatGPT/config.json";
+    public static String getConfigure() {
+        String home = System.getProperty(EnvironmentConstant.HOME);
+        String configPath = home + EnvironmentConstant.CONFIG_PATH;
         Path filePath = Paths.get(configPath);
 
+        String content = null;
+
         try {
-            String content = Files.readString(filePath);
-            JSONObject config = JSONObject.parseObject(content);
-            System.out.println(config); // 输出 JSON 格式化后的内容
+            content = Files.readString(filePath);
         } catch (IOException e) {
             System.err.println("Error reading the config file: " + e.getMessage());
         }
-        return null;
+        return content;
     }
 }
