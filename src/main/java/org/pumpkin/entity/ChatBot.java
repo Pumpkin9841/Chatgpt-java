@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -53,7 +54,7 @@ public class ChatBot {
      * @param timeout 超时时间 默认为 360s
      * @return
      */
-    public String ask(String prompt, String conversationId, String parentId, String model, int timeout) {
+    public String ask(String prompt, String conversationId, String parentId, String model, Integer timeout) {
 
         if(StrUtil.isBlank(conversationId) && StrUtil.isBlank(parentId)) {
             parentId = UUID.randomUUID().toString();
@@ -97,6 +98,7 @@ public class ChatBot {
                 .header("X-Openai-Assistant-App-Id", "")
                 .header(Header.ACCEPT_LANGUAGE.getValue(), "en-US,en;q=0.9")
                 .header(Header.REFERER.getValue(), "https://chat.openai.com/chat")
+                .timeout(timeout == null ? EnvironmentConstant.TIMEOUT : Duration.ofSeconds(timeout))
                 .POST(java.net.http.HttpRequest.BodyPublishers.ofString(JSONUtil.toJsonStr(data)))
                 .build();
         HttpClient client = HttpClient.newHttpClient();
@@ -119,6 +121,11 @@ public class ChatBot {
                 : "text-davinci-002-render-sha";
     }
 
+    public String ask(String prompt) {
+        return this.ask(prompt,36000);
+    }
 
-
+    public String ask(String prompt, Integer timeout) {
+        return this.ask(prompt, null , null, null, timeout);
+    }
 }
