@@ -241,14 +241,18 @@ public class ChatBot {
                     //TODO 根据状态码返回详细错误信息
                     throw new RuntimeException("error");
                 }
-                msg = MapUtil.get(MapUtil.getAny(lineMap, "message"), "content", List.class).get(0).toString();
+                msg = MapUtil.get(MapUtil.get(MapUtil.get(lineMap, "message", Map.class),
+                        "content", Map.class),
+                        "parts", List.class).get(0).toString();
                 if(prompt.equals(msg)) {
                     continue;
                 }
                 conversationId = MapUtil.getStr(lineMap, "conversation_id");
-                parentId = MapUtil.getStr(MapUtil.getAny(lineMap, "message"), "id");
+                parentId = MapUtil.getStr(MapUtil.get(lineMap, "message", Map.class), "id");
                 try{
-                    model = MapUtil.getStr(MapUtil.getAny(lineMap, "message"), "metadata", "model_slug");
+                    model = MapUtil.getStr(MapUtil.get(MapUtil.get(lineMap, "message", Map.class),
+                            "metadata", Map.class),
+                            "model_slug");
                 }catch (Exception e){
                     model = null;
                 }
@@ -279,7 +283,7 @@ public class ChatBot {
     }
 
     private boolean checkFields(HashMap lineMap) {
-        return false;
+        return true;
     }
 
     private void checkResponse(HttpResponse<InputStream> response) {
