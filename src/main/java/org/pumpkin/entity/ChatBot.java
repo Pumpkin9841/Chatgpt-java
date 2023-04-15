@@ -1,6 +1,7 @@
 package org.pumpkin.entity;
 
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.Header;
@@ -15,11 +16,15 @@ import lombok.NoArgsConstructor;
 import org.pumpkin.config.EnvironmentConstant;
 import org.pumpkin.utils.ConfigureUtil;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 
@@ -160,11 +165,12 @@ public class ChatBot {
         //构造消息体
         final String finalConversationId = conversationId;
         final String finalParentId = parentId;
+        final String finalModel = model;
         HashMap<String, Object> data = new HashMap<>(){{
             put("action", "next");
             put("conversation_id", finalConversationId);
             put("parent_message_id", finalParentId);
-            put("model", getModel(model));
+            put("model", getModel(finalModel));
             put("messages", new ArrayList<>(){{
                 add(new HashMap<String, Object>(){{
                     put("id", UUID.randomUUID().toString());
@@ -196,14 +202,88 @@ public class ChatBot {
         HttpClient client = HttpClient.newHttpClient();
 
         try {
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            //流式处理响应
+            HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            checkResponse(response);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8));
+            String line;
+            boolean done = false;
+            String msg = null;
+            while((line = reader.readLine()) != null) {
+                line = line.trim();
+                if(line.toLowerCase().equals("internal server error")) {
+                    log.error("Internal server error: {}", line);
+                    throw new RuntimeException("Internal server error");
+                }
+                if(StrUtil.isBlank(line)) {
+                    continue;
+                }
+                if(line.startsWith("data: ")) {
+                    line = line.substring(6);
+                }
+                if(line.equals("[DONE]")) {
+                    done = true;
+                    break;
+                }
+                line = line.replace("\\\"", "\"");
+                line = line.replace("\\'", "'");
+                line = line.replace("\\\\", "\\");
+                HashMap lineMap = new HashMap();
+                try {
+                    lineMap = JSONUtil.toBean(line, HashMap.class);
+                } catch (Exception e) {
+                    continue;
+                }
+
+                if(!checkFields(lineMap) || response.statusCode() != 200) {
+                    log.error("Field missing");
+                    log.error(response.body().toString());
+                    //TODO 根据状态码返回详细错误信息
+                    throw new RuntimeException("error");
+                }
+                msg = MapUtil.get(MapUtil.getAny(lineMap, "message"), "content", List.class).get(0).toString();
+                if(prompt.equals(msg)) {
+                    continue;
+                }
+                conversationId = MapUtil.getStr(lineMap, "conversation_id");
+                parentId = MapUtil.getStr(MapUtil.getAny(lineMap, "message"), "id");
+                try{
+                    model = MapUtil.getStr(MapUtil.getAny(lineMap, "message"), "metadata", "model_slug");
+                }catch (Exception e){
+                    model = null;
+                }
+
+                log.debug("Received message: {}", msg);
+                log.debug("Received conversation_id: {}", conversationId);
+                log.debug("Received parent_id: {}", parentId);
+            }
+
+            if(!done) {
+                //TODO
+            }
+            this.conversationMapping.put(conversationId, parentId);
+            if(!StrUtil.isBlank(parentId)) {
+                this.parentId = parentId;
+            }
+            if (!StrUtil.isNotBlank(conversationId)) {
+                this.conversationId = conversationId;
+            }
+
             System.out.println(response.body());
-            return response.body();
+            return msg;
         } catch (IOException e) {
             throw new RuntimeException(e);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private boolean checkFields(HashMap lineMap) {
+        return false;
+    }
+
+    private void checkResponse(HttpResponse<InputStream> response) {
+
     }
 
     private void mapConversations() {
