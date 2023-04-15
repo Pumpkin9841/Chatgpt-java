@@ -281,15 +281,26 @@ public class ChatBot {
             throw new RuntimeException(e);
         }
     }
-
+    
     private boolean checkFields(HashMap lineMap) {
+        try{
+            MapUtil.get(MapUtil.get(lineMap, "message", Map.class),
+                            "content", Map.class);
+        } catch (Exception e) {
+            return false;
+        }
         return true;
     }
 
-    private void checkResponse(HttpResponse<InputStream> response) {
-
+    private void checkResponse(HttpResponse response) {
+        if(response.statusCode() != 200) {
+            log.error("Response status code: {}", response.statusCode());
+            log.error("Response body: {}", response.body());
+            throw new RuntimeException("Response status code: " + response.statusCode() + ", message: " + response.body());
+        }
     }
 
+    //TODO
     private void mapConversations() {
 
     }
@@ -300,7 +311,19 @@ public class ChatBot {
      * @return
      */
     private HashMap<String, Object> getMsgHistory(String conversationId) {
-        return null;
+        HttpRequest request = this.requestBuilder
+                .uri(URI.create(EnvironmentConstant.BASE_URL + "/" + conversationId))
+                .GET()
+                .build();
+        HttpClient client = HttpClient.newHttpClient();
+        try{
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            checkResponse(response);
+            HashMap map = JSONUtil.toBean(response.body(), HashMap.class);
+            return JSONUtil.toBean(response.body(), HashMap.class);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private String getModel(String model) {
