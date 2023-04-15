@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.*;
 
@@ -195,9 +196,9 @@ public class ChatBot {
         HttpClient client = HttpClient.newHttpClient();
 
         try {
-            java.net.http.HttpResponse<String> send = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-            System.out.println(send.body());
-            return send.body();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            System.out.println(response.body());
+            return response.body();
         } catch (IOException e) {
             throw new RuntimeException(e);
         } catch (InterruptedException e) {
