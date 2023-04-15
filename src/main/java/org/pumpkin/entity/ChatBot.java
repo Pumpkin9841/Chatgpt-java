@@ -1,6 +1,7 @@
 package org.pumpkin.entity;
 
 
+import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.Header;
 import cn.hutool.json.JSONObject;
@@ -48,15 +49,15 @@ public class ChatBot {
      */
     private String parentId;
 
-    private HashMap<String, Object> conversationMapping;
+    private HashMap<String, Object> conversationMapping = new HashMap<>();
 
-    private Queue<String> conversationIdPrevQueue;
+    private Queue<String> conversationIdPrevQueue = new LinkedList<>();
 
-    private Queue<String> parentIdPrevQueue;
+    private Queue<String> parentIdPrevQueue = new LinkedList<>();
 
     private Boolean lazyLoading = true;
 
-    private HttpRequest request;
+    private HttpRequest.Builder requestBuilder;
 
     Log log = LogFactory.get();
 
@@ -71,19 +72,18 @@ public class ChatBot {
             }
             this.conversationId = jsonConfig.getStr("conversationId");
             this.parentId = jsonConfig.getStr("parentId");
-            this.request = checkCredentials(accessToken);
+            this.requestBuilder = checkCredentials(accessToken);
         }
     }
 
-    private HttpRequest checkCredentials(String accessToken) {
-        return request = HttpRequest.newBuilder()
+    private HttpRequest.Builder checkCredentials(String accessToken) {
+        return HttpRequest.newBuilder()
                 .header(Header.ACCEPT.getValue(), "text/event-stream")
                 .header(Header.AUTHORIZATION.getValue(), "Bearer " + accessToken)
                 .header(Header.CONTENT_TYPE.getValue(), "application/json")
                 .header("X-Openai-Assistant-App-Id", "")
                 .header(Header.ACCEPT_LANGUAGE.getValue(), "en-US,en;q=0.9")
-                .header(Header.REFERER.getValue(), "https://chat.openai.com/chat")
-                .build();
+                .header(Header.REFERER.getValue(), "https://chat.openai.com/chat");
     }
 
     /**
@@ -97,12 +97,50 @@ public class ChatBot {
      */
     public String ask(String prompt, String conversationId, String parentId, String model, Integer timeout) {
 
+        // 设置 parentId 的前提是 conversationId 已经存在
+        if(!StrUtil.isBlank(parentId) && StrUtil.isBlank(conversationId)){
+            log.error("conversation_id must be set once parent_id is set");
+            throw new IllegalArgumentException("conversation_id must be set once parent_id is set");
+        }
+
+        if(!StrUtil.isBlank(conversationId) && !conversationId.equals(this.conversationId)) {
+            log.debug("Updating to new conversation by setting parent_id to None");
+            this.parentId = null;
+        }
+
+        conversationId = StrUtil.isBlank(conversationId) ? this.conversationId : conversationId;
+        parentId = StrUtil.isBlank(parentId) ? this.parentId : parentId;
+
         if(StrUtil.isBlank(conversationId) && StrUtil.isBlank(parentId)) {
             parentId = UUID.randomUUID().toString();
             log.debug("New conversation, setting parent_id to new UUID4: {}", parentId);
         }
 
-        String finalParentId = parentId;
+        if(!StrUtil.isBlank(conversationId) && StrUtil.isBlank(parentId)) {
+            if (!this.conversationMapping.containsKey(conversationId)) {
+                if(this.lazyLoading) {
+                    log.debug("Conversation ID {} not found in conversation mapping, try to get conversation history for the given ID", conversationId);
+                    try{
+                        HashMap<String, Object> history = getMsgHistory(conversationId);
+                        this.conversationMapping.put(conversationId, history.get("current_node"));
+                    } catch (Exception e) {
+                        // 忽略异常
+                    }
+                } else {
+                    log.debug("Conversation ID {} not found in conversation mapping, mapping conversations", conversationId);
+                    mapConversations();
+                }
+            }
+            if(this.conversationMapping.containsKey(conversationId)) {
+                log.debug("Conversation ID {} found in conversation mapping, setting parent_id to {}", conversationId, MapUtil.getStr(this.conversationMapping, conversationId));
+                parentId = MapUtil.getStr(this.conversationMapping, conversationId);
+            } else {
+                conversationId = null;
+                parentId = UUID.randomUUID().toString();
+            }
+        }
+
+
         List<HashMap<String, Object>> messages = new ArrayList<>(){{
            add(new HashMap<String, Object>(){{
                put("id", UUID.randomUUID().toString());
@@ -118,9 +156,12 @@ public class ChatBot {
                }});
            }});
         }};
+
+        final String finalConversationId = conversationId;
+        final String finalParentId = parentId;
         HashMap<String, Object> data = new HashMap<>(){{
             put("action", "next");
-            put("conversation_id", conversationId);
+            put("conversation_id", finalConversationId);
             put("parent_message_id", finalParentId);
             put("model", getModel(model));
             put("messages", messages);
@@ -131,18 +172,25 @@ public class ChatBot {
 
         String accessToken = JSONUtil.parseObj(config).get("access_token").toString();
 
-        HttpRequest request = HttpRequest.newBuilder()
+//        HttpRequest request = HttpRequest.newBuilder()
+//                .uri(URI.create(EnvironmentConstant.BASE_URL))
+//                .header(Header.ACCEPT.getValue(), "text/event-stream")
+//                .header(Header.AUTHORIZATION.getValue(), "Bearer " + accessToken)
+//                .header(Header.CONTENT_TYPE.getValue(), "application/json")
+//                .header("X-Openai-Assistant-App-Id", "")
+//                .header(Header.ACCEPT_LANGUAGE.getValue(), "en-US,en;q=0.9")
+//                .header(Header.REFERER.getValue(), "https://chat.openai.com/chat")
+//                .timeout(timeout == null ? EnvironmentConstant.TIMEOUT : Duration.ofSeconds(timeout))
+//                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(JSONUtil.toJsonStr(data)))
+//                .build();
+
+        HttpRequest request = this.requestBuilder
                 .uri(URI.create(EnvironmentConstant.BASE_URL))
-                .header(Header.ACCEPT.getValue(), "text/event-stream")
-                .header(Header.AUTHORIZATION.getValue(), "Bearer " + accessToken)
-                .header(Header.CONTENT_TYPE.getValue(), "application/json")
-                .header("X-Openai-Assistant-App-Id", "")
-                .header(Header.ACCEPT_LANGUAGE.getValue(), "en-US,en;q=0.9")
-                .header(Header.REFERER.getValue(), "https://chat.openai.com/chat")
                 .timeout(timeout == null ? EnvironmentConstant.TIMEOUT : Duration.ofSeconds(timeout))
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(JSONUtil.toJsonStr(data)))
+                .POST(HttpRequest.BodyPublishers.ofString(JSONUtil.toJsonStr(data)))
                 .build();
         HttpClient client = HttpClient.newHttpClient();
+
         try {
             java.net.http.HttpResponse<String> send = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
             System.out.println(send.body());
@@ -152,6 +200,19 @@ public class ChatBot {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private void mapConversations() {
+
+    }
+
+    /**
+     * 获取历史消息
+     * @param conversationId
+     * @return
+     */
+    private HashMap<String, Object> getMsgHistory(String conversationId) {
+        return null;
     }
 
     private String getModel(String model) {
