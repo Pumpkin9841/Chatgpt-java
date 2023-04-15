@@ -1,6 +1,8 @@
 package org.pumpkin.entity;
 
 
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.Header;
 import cn.hutool.json.JSONObject;
@@ -14,10 +16,15 @@ import lombok.NoArgsConstructor;
 import org.pumpkin.config.EnvironmentConstant;
 import org.pumpkin.utils.ConfigureUtil;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 
@@ -48,15 +55,15 @@ public class ChatBot {
      */
     private String parentId;
 
-    private HashMap<String, Object> conversationMapping;
+    private HashMap<String, Object> conversationMapping = new HashMap<>();
 
-    private Queue<String> conversationIdPrevQueue;
+    private Queue<String> conversationIdPrevQueue = new LinkedList<>();
 
-    private Queue<String> parentIdPrevQueue;
+    private Queue<String> parentIdPrevQueue = new LinkedList<>();
 
     private Boolean lazyLoading = true;
 
-    private HttpRequest request;
+    private HttpRequest.Builder requestBuilder;
 
     Log log = LogFactory.get();
 
@@ -71,19 +78,18 @@ public class ChatBot {
             }
             this.conversationId = jsonConfig.getStr("conversationId");
             this.parentId = jsonConfig.getStr("parentId");
-            this.request = checkCredentials(accessToken);
+            this.requestBuilder = checkCredentials(accessToken);
         }
     }
 
-    private HttpRequest checkCredentials(String accessToken) {
-        return request = HttpRequest.newBuilder()
+    private HttpRequest.Builder checkCredentials(String accessToken) {
+        return HttpRequest.newBuilder()
                 .header(Header.ACCEPT.getValue(), "text/event-stream")
                 .header(Header.AUTHORIZATION.getValue(), "Bearer " + accessToken)
                 .header(Header.CONTENT_TYPE.getValue(), "application/json")
                 .header("X-Openai-Assistant-App-Id", "")
                 .header(Header.ACCEPT_LANGUAGE.getValue(), "en-US,en;q=0.9")
-                .header(Header.REFERER.getValue(), "https://chat.openai.com/chat")
-                .build();
+                .header(Header.REFERER.getValue(), "https://chat.openai.com/chat");
     }
 
     /**
@@ -97,59 +103,225 @@ public class ChatBot {
      */
     public String ask(String prompt, String conversationId, String parentId, String model, Integer timeout) {
 
+        // 设置 parentId 的前提是 conversationId 已经存在
+        if(!StrUtil.isBlank(parentId) && StrUtil.isBlank(conversationId)){
+            log.error("conversation_id must be set once parent_id is set");
+            throw new IllegalArgumentException("conversation_id must be set once parent_id is set");
+        }
+
+        if(!StrUtil.isBlank(conversationId) && !conversationId.equals(this.conversationId)) {
+            log.debug("Updating to new conversation by setting parent_id to None");
+            this.parentId = null;
+        }
+
+        conversationId = StrUtil.isBlank(conversationId) ? this.conversationId : conversationId;
+        parentId = StrUtil.isBlank(parentId) ? this.parentId : parentId;
+
         if(StrUtil.isBlank(conversationId) && StrUtil.isBlank(parentId)) {
             parentId = UUID.randomUUID().toString();
             log.debug("New conversation, setting parent_id to new UUID4: {}", parentId);
         }
 
-        String finalParentId = parentId;
-        List<HashMap<String, Object>> messages = new ArrayList<>(){{
-           add(new HashMap<String, Object>(){{
-               put("id", UUID.randomUUID().toString());
-               put("role", "user");
-               put("author", new HashMap<String, String>(){{
-                   put("role", "user");
-               }});
-               put("content", new HashMap<String, Object>(){{
-                   put("content_type", "text");
-                   put("parts", new ArrayList<>(){{
-                       add(prompt);
-                   }});
-               }});
-           }});
-        }};
+        if(!StrUtil.isBlank(conversationId) && StrUtil.isBlank(parentId)) {
+            if (!this.conversationMapping.containsKey(conversationId)) {
+                if(this.lazyLoading) {
+                    log.debug("Conversation ID {} not found in conversation mapping, try to get conversation history for the given ID", conversationId);
+                    try{
+                        HashMap<String, Object> history = getMsgHistory(conversationId);
+                        this.conversationMapping.put(conversationId, history.get("current_node"));
+                    } catch (Exception e) {
+                        // 忽略异常
+                    }
+                } else {
+                    log.debug("Conversation ID {} not found in conversation mapping, mapping conversations", conversationId);
+                    mapConversations();
+                }
+            }
+            if(this.conversationMapping.containsKey(conversationId)) {
+                log.debug("Conversation ID {} found in conversation mapping, setting parent_id to {}", conversationId, MapUtil.getStr(this.conversationMapping, conversationId));
+                parentId = MapUtil.getStr(this.conversationMapping, conversationId);
+            } else {
+                conversationId = null;
+                parentId = UUID.randomUUID().toString();
+            }
+        }
+
+//        List<HashMap<String, Object>> messages = new ArrayList<>(){{
+//           add(new HashMap<String, Object>(){{
+//               put("id", UUID.randomUUID().toString());
+//               put("role", "user");
+//               put("author", new HashMap<String, String>(){{
+//                   put("role", "user");
+//               }});
+//               put("content", new HashMap<String, Object>(){{
+//                   put("content_type", "text");
+//                   put("parts", new ArrayList<>(){{
+//                       add(prompt);
+//                   }});
+//               }});
+//           }});
+//        }};
+
+        //构造消息体
+        final String finalConversationId = conversationId;
+        final String finalParentId = parentId;
+        final String finalModel = model;
         HashMap<String, Object> data = new HashMap<>(){{
             put("action", "next");
-            put("conversation_id", conversationId);
+            put("conversation_id", finalConversationId);
             put("parent_message_id", finalParentId);
-            put("model", getModel(model));
-            put("messages", messages);
+            put("model", getModel(finalModel));
+            put("messages", new ArrayList<>(){{
+                add(new HashMap<String, Object>(){{
+                    put("id", UUID.randomUUID().toString());
+                    put("role", "user");
+                    put("author", new HashMap<String, String>(){{
+                        put("role", "user");
+                    }});
+                    put("content", new HashMap<String, Object>(){{
+                        put("content_type", "text");
+                        put("parts", new ArrayList<>(){{
+                            add(prompt);
+                        }});
+                    }});
+                }});
+            }});
         }};
 
         log.debug("Sending the payload");
         log.debug(JSONUtil.toJsonPrettyStr(data));
 
-        String accessToken = JSONUtil.parseObj(config).get("access_token").toString();
+        this.conversationIdPrevQueue.offer(MapUtil.getStr(data, "conversation_id"));
+        this.parentIdPrevQueue.offer(MapUtil.getStr(data, "parent_message_id"));
 
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = this.requestBuilder
                 .uri(URI.create(EnvironmentConstant.BASE_URL))
-                .header(Header.ACCEPT.getValue(), "text/event-stream")
-                .header(Header.AUTHORIZATION.getValue(), "Bearer " + accessToken)
-                .header(Header.CONTENT_TYPE.getValue(), "application/json")
-                .header("X-Openai-Assistant-App-Id", "")
-                .header(Header.ACCEPT_LANGUAGE.getValue(), "en-US,en;q=0.9")
-                .header(Header.REFERER.getValue(), "https://chat.openai.com/chat")
                 .timeout(timeout == null ? EnvironmentConstant.TIMEOUT : Duration.ofSeconds(timeout))
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(JSONUtil.toJsonStr(data)))
+                .POST(HttpRequest.BodyPublishers.ofString(JSONUtil.toJsonStr(data)))
                 .build();
         HttpClient client = HttpClient.newHttpClient();
+
         try {
-            java.net.http.HttpResponse<String> send = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-            System.out.println(send.body());
-            return send.body();
+            //流式处理响应
+            HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            checkResponse(response);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8));
+            String line;
+            boolean done = false;
+            String msg = null;
+            while((line = reader.readLine()) != null) {
+                line = line.trim();
+                if(line.toLowerCase().equals("internal server error")) {
+                    log.error("Internal server error: {}", line);
+                    throw new RuntimeException("Internal server error");
+                }
+                if(StrUtil.isBlank(line)) {
+                    continue;
+                }
+                if(line.startsWith("data: ")) {
+                    line = line.substring(6);
+                }
+                if(line.equals("[DONE]")) {
+                    done = true;
+                    break;
+                }
+                line = line.replace("\\\"", "\"");
+                line = line.replace("\\'", "'");
+                line = line.replace("\\\\", "\\");
+                HashMap lineMap = new HashMap();
+                try {
+                    lineMap = JSONUtil.toBean(line, HashMap.class);
+                } catch (Exception e) {
+                    continue;
+                }
+
+                if(!checkFields(lineMap) || response.statusCode() != 200) {
+                    log.error("Field missing");
+                    log.error(response.body().toString());
+                    //TODO 根据状态码返回详细错误信息
+                    throw new RuntimeException("error");
+                }
+                msg = MapUtil.get(MapUtil.get(MapUtil.get(lineMap, "message", Map.class),
+                        "content", Map.class),
+                        "parts", List.class).get(0).toString();
+                if(prompt.equals(msg)) {
+                    continue;
+                }
+                conversationId = MapUtil.getStr(lineMap, "conversation_id");
+                parentId = MapUtil.getStr(MapUtil.get(lineMap, "message", Map.class), "id");
+                try{
+                    model = MapUtil.getStr(MapUtil.get(MapUtil.get(lineMap, "message", Map.class),
+                            "metadata", Map.class),
+                            "model_slug");
+                }catch (Exception e){
+                    model = null;
+                }
+
+                log.debug("Received message: {}", msg);
+                log.debug("Received conversation_id: {}", conversationId);
+                log.debug("Received parent_id: {}", parentId);
+            }
+
+            if(!done) {
+                //TODO
+            }
+            this.conversationMapping.put(conversationId, parentId);
+            if(!StrUtil.isBlank(parentId)) {
+                this.parentId = parentId;
+            }
+            if (!StrUtil.isNotBlank(conversationId)) {
+                this.conversationId = conversationId;
+            }
+
+            System.out.println(response.body());
+            return msg;
         } catch (IOException e) {
             throw new RuntimeException(e);
         } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+    
+    private boolean checkFields(HashMap lineMap) {
+        try{
+            MapUtil.get(MapUtil.get(lineMap, "message", Map.class),
+                            "content", Map.class);
+        } catch (Exception e) {
+            return false;
+        }
+        return true;
+    }
+
+    private void checkResponse(HttpResponse response) {
+        if(response.statusCode() != 200) {
+            log.error("Response status code: {}", response.statusCode());
+            log.error("Response body: {}", response.body());
+            throw new RuntimeException("Response status code: " + response.statusCode() + ", message: " + response.body());
+        }
+    }
+
+    //TODO
+    private void mapConversations() {
+
+    }
+
+    /**
+     * 获取历史消息
+     * @param conversationId
+     * @return
+     */
+    private HashMap<String, Object> getMsgHistory(String conversationId) {
+        HttpRequest request = this.requestBuilder
+                .uri(URI.create(EnvironmentConstant.BASE_URL + "/" + conversationId))
+                .GET()
+                .build();
+        HttpClient client = HttpClient.newHttpClient();
+        try{
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            checkResponse(response);
+            HashMap map = JSONUtil.toBean(response.body(), HashMap.class);
+            return JSONUtil.toBean(response.body(), HashMap.class);
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
