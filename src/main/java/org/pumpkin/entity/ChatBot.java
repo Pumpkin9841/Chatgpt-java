@@ -172,18 +172,6 @@ public class ChatBot {
 
         String accessToken = JSONUtil.parseObj(config).get("access_token").toString();
 
-//        HttpRequest request = HttpRequest.newBuilder()
-//                .uri(URI.create(EnvironmentConstant.BASE_URL))
-//                .header(Header.ACCEPT.getValue(), "text/event-stream")
-//                .header(Header.AUTHORIZATION.getValue(), "Bearer " + accessToken)
-//                .header(Header.CONTENT_TYPE.getValue(), "application/json")
-//                .header("X-Openai-Assistant-App-Id", "")
-//                .header(Header.ACCEPT_LANGUAGE.getValue(), "en-US,en;q=0.9")
-//                .header(Header.REFERER.getValue(), "https://chat.openai.com/chat")
-//                .timeout(timeout == null ? EnvironmentConstant.TIMEOUT : Duration.ofSeconds(timeout))
-//                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(JSONUtil.toJsonStr(data)))
-//                .build();
-
         HttpRequest request = this.requestBuilder
                 .uri(URI.create(EnvironmentConstant.BASE_URL))
                 .timeout(timeout == null ? EnvironmentConstant.TIMEOUT : Duration.ofSeconds(timeout))
