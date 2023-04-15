@@ -1,7 +1,6 @@
 package org.pumpkin.entity;
 
 
-import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.Header;
@@ -12,7 +11,6 @@ import cn.hutool.log.LogFactory;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 import org.pumpkin.config.EnvironmentConstant;
 import org.pumpkin.utils.ConfigureUtil;
 
@@ -146,22 +144,6 @@ public class ChatBot {
             }
         }
 
-//        List<HashMap<String, Object>> messages = new ArrayList<>(){{
-//           add(new HashMap<String, Object>(){{
-//               put("id", UUID.randomUUID().toString());
-//               put("role", "user");
-//               put("author", new HashMap<String, String>(){{
-//                   put("role", "user");
-//               }});
-//               put("content", new HashMap<String, Object>(){{
-//                   put("content_type", "text");
-//                   put("parts", new ArrayList<>(){{
-//                       add(prompt);
-//                   }});
-//               }});
-//           }});
-//        }};
-
         //构造消息体
         final String finalConversationId = conversationId;
         final String finalParentId = parentId;
@@ -269,7 +251,7 @@ public class ChatBot {
             if(!StrUtil.isBlank(parentId)) {
                 this.parentId = parentId;
             }
-            if (!StrUtil.isNotBlank(conversationId)) {
+            if (!StrUtil.isBlank(conversationId)) {
                 this.conversationId = conversationId;
             }
 
@@ -281,7 +263,7 @@ public class ChatBot {
             throw new RuntimeException(e);
         }
     }
-    
+
     private boolean checkFields(HashMap lineMap) {
         try{
             MapUtil.get(MapUtil.get(lineMap, "message", Map.class),
