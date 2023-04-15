@@ -140,23 +140,23 @@ public class ChatBot {
             }
         }
 
+//        List<HashMap<String, Object>> messages = new ArrayList<>(){{
+//           add(new HashMap<String, Object>(){{
+//               put("id", UUID.randomUUID().toString());
+//               put("role", "user");
+//               put("author", new HashMap<String, String>(){{
+//                   put("role", "user");
+//               }});
+//               put("content", new HashMap<String, Object>(){{
+//                   put("content_type", "text");
+//                   put("parts", new ArrayList<>(){{
+//                       add(prompt);
+//                   }});
+//               }});
+//           }});
+//        }};
 
-        List<HashMap<String, Object>> messages = new ArrayList<>(){{
-           add(new HashMap<String, Object>(){{
-               put("id", UUID.randomUUID().toString());
-               put("role", "user");
-               put("author", new HashMap<String, String>(){{
-                   put("role", "user");
-               }});
-               put("content", new HashMap<String, Object>(){{
-                   put("content_type", "text");
-                   put("parts", new ArrayList<>(){{
-                       add(prompt);
-                   }});
-               }});
-           }});
-        }};
-
+        //构造消息体
         final String finalConversationId = conversationId;
         final String finalParentId = parentId;
         HashMap<String, Object> data = new HashMap<>(){{
@@ -164,13 +164,28 @@ public class ChatBot {
             put("conversation_id", finalConversationId);
             put("parent_message_id", finalParentId);
             put("model", getModel(model));
-            put("messages", messages);
+            put("messages", new ArrayList<>(){{
+                add(new HashMap<String, Object>(){{
+                    put("id", UUID.randomUUID().toString());
+                    put("role", "user");
+                    put("author", new HashMap<String, String>(){{
+                        put("role", "user");
+                    }});
+                    put("content", new HashMap<String, Object>(){{
+                        put("content_type", "text");
+                        put("parts", new ArrayList<>(){{
+                            add(prompt);
+                        }});
+                    }});
+                }});
+            }});
         }};
 
         log.debug("Sending the payload");
         log.debug(JSONUtil.toJsonPrettyStr(data));
 
-        String accessToken = JSONUtil.parseObj(config).get("access_token").toString();
+        this.conversationIdPrevQueue.offer(MapUtil.getStr(data, "conversation_id"));
+        this.parentIdPrevQueue.offer(MapUtil.getStr(data, "parent_message_id"));
 
         HttpRequest request = this.requestBuilder
                 .uri(URI.create(EnvironmentConstant.BASE_URL))
