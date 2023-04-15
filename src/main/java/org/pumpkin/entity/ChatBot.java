@@ -251,7 +251,7 @@ public class ChatBot {
             if(!StrUtil.isBlank(parentId)) {
                 this.parentId = parentId;
             }
-            if (!StrUtil.isNotBlank(conversationId)) {
+            if (!StrUtil.isBlank(conversationId)) {
                 this.conversationId = conversationId;
             }
 
