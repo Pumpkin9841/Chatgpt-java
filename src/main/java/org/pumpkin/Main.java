@@ -23,17 +23,4 @@ public class Main {
             System.out.println(answer);
         }
     }
-
-    private static void reverseChatGpt(String config, String conversationId, String parentId) {
-        ChatBot bot = new ChatBot()
-                .toBuilder()
-                .config(config)
-                .conversationId(conversationId)
-                .parentId(parentId)
-                .build();
-        System.out.println("You:");
-        String hello = bot.ask("hello", conversationId, parentId, null, 360);
-        System.out.println(hello);
-
-    }
 }
