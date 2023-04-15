@@ -255,7 +255,6 @@ public class ChatBot {
                 this.conversationId = conversationId;
             }
 
-            System.out.println(response.body());
             return msg;
         } catch (IOException e) {
             throw new RuntimeException(e);
