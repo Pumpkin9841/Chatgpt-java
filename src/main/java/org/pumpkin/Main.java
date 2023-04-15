@@ -8,12 +8,20 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Scanner;
 
 
 public class Main {
     public static void main(String[] args) {
-        String config = ConfigureUtil.getConfigure();
-        reverseChatGpt(config, null, null);
+        ChatBot bot = new ChatBot();
+        Scanner scanner = new Scanner(System.in);
+        while(true) {
+            System.out.println("You:");
+            String prompt = scanner.nextLine();
+            String answer = bot.ask(prompt);
+            System.out.println("ChatBot:");
+            System.out.println(answer);
+        }
     }
 
     private static void reverseChatGpt(String config, String conversationId, String parentId) {
