@@ -11,6 +11,7 @@ import cn.hutool.log.LogFactory;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NonNull;
 import org.pumpkin.config.EnvironmentConstant;
 import org.pumpkin.utils.ConfigureUtil;
 
@@ -66,18 +67,21 @@ public class ChatBot {
     Log log = LogFactory.get();
 
     public ChatBot() {
-        this.config = ConfigureUtil.getConfigure();
-        if(!StrUtil.isBlank(config)) {
-            JSONObject jsonConfig = JSONUtil.parseObj(config);
-            //TODO 邮箱登陆，目前只支持access_token
-            String accessToken = jsonConfig.getStr("access_token");
-            if(StrUtil.isBlank(accessToken)) {
+        this(ConfigureUtil.getConfigure());
+    }
+
+    public ChatBot(@NonNull AuthConfig config) {
+        if (!StrUtil.isEmpty(config.getAccessToken())) {
+            String accessToken = config.getAccessToken();
+            if (StrUtil.isBlank(accessToken)) {
                 throw new RuntimeException("No access_token found.");
             }
-            this.conversationId = jsonConfig.getStr("conversationId");
-            this.parentId = jsonConfig.getStr("parentId");
+            this.conversationId = config.getConversationId();
+            this.parentId = config.getParentId();
             this.requestBuilder = checkCredentials(accessToken);
         }
+
+        //TODO 邮箱登陆，目前只支持access_token
     }
 
     private HttpRequest.Builder checkCredentials(String accessToken) {

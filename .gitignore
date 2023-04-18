@@ -6,6 +6,8 @@
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
+/target/
+/.idea/
 
 # Compiled class file
 *.class
@@ -33,3 +35,4 @@ hs_err_pid*
 
 ../revGpt-java.bk/.idea
 .config
+.idea
